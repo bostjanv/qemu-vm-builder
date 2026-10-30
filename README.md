@@ -34,6 +34,7 @@ networking, so the host system and network are not changed.
 - A subordinate UID/GID range for your user in `/etc/subuid` and `/etc/subgid`
   (most distributions create one with the account)
 - An SSH public key (the default is `~/.ssh/id_ed25519.pub`)
+- For changing the scripts: `shellcheck`
 
 ## Quick start
 

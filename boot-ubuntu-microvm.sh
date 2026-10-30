@@ -121,6 +121,8 @@ case $console in
         fi
         ;;
     virtio)
+        # Commas separate QEMU suboptions, not array elements.
+        # shellcheck disable=SC2054
         console_args=(
             -chardev "$console_backend"
             -device virtio-serial-device

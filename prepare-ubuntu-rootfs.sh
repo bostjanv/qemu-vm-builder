@@ -57,6 +57,8 @@ in_userns() { unshare --user --map-auto --map-root-user -- "$@"; }
 # in a private mount namespace and disappear when it exits, before mkfs.btrfs
 # reads the tree.
 run_chroot() {
+    # The inner script expands its own positional parameters.
+    # shellcheck disable=SC2016
     unshare --mount --propagation private --pid --fork -- /bin/bash -c '
         set -Eeuo pipefail
         rootfs=$1 user=$2 hostname=$3

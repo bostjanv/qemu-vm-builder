@@ -1,3 +1,4 @@
+#!/usr/bin/env bash
 # Example provisioning script. Runs as root inside the guest while the image
 # is built, with network access. MICROVM_USER and MICROVM_HOSTNAME are set.
 set -Eeuo pipefail

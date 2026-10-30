@@ -46,9 +46,9 @@ validation of user-supplied values.
 
 ## Verifying changes
 
-There is no test suite or CI, and shellcheck isn't installed.
+There is no test suite or CI.
 
-- Always: `bash -n` and `--help` on every changed script.
+- Always: `bash -n`, `shellcheck`, and `--help` on every changed script.
 - Rootfs changes: build a scratch image in a git-ignored directory with a
   throwaway key, for example `ssh-keygen -q -t ed25519 -N '' -f DIR/testkey`.
   Inspect the image without root using

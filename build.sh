@@ -39,6 +39,8 @@ if [[ -e $config ]]; then
     source "$config"
     set +a
     for setting in "${overrides[@]}"; do
+        # setting is NAME=value.
+        # shellcheck disable=SC2163
         export "$setting"
     done
 elif (( $# == 1 )); then
@@ -54,8 +56,10 @@ export MICROVM_SSH_KEY=${MICROVM_SSH_KEY:-$HOME/.ssh/id_ed25519.pub}
 export MICROVM_SSH_PORT=${MICROVM_SSH_PORT:-2222}
 export MICROVM_BUILD_DIR=${MICROVM_BUILD_DIR:-build}
 
-[[ $MICROVM_SSH_PORT =~ ^[0-9]+$ ]] && (( 10#$MICROVM_SSH_PORT >= 1024 && 10#$MICROVM_SSH_PORT <= 65535 )) || \
+if ! [[ $MICROVM_SSH_PORT =~ ^[0-9]+$ ]] ||
+        (( 10#$MICROVM_SSH_PORT < 1024 || 10#$MICROVM_SSH_PORT > 65535 )); then
     die "MICROVM_SSH_PORT must be between 1024 and 65535: $MICROVM_SSH_PORT"
+fi
 
 version=$MICROVM_UBUNTU_VERSION
 [[ $version =~ ^([0-9]+\.[0-9]+)(\.[0-9]+)?$ ]] || \
