@@ -86,13 +86,16 @@ The boot script uses these environment variables:
 Set `MICROVM_PROVISION_DIR` to a directory of `*.sh` scripts. They run as
 root inside the guest, in name order, after the base system is set up. They
 have network access, so they can use `apt-get install`. They also get
-`MICROVM_USER` and `MICROVM_HOSTNAME` as environment variables. For example,
-`provision.d/10-dev-tools.sh`:
+`MICROVM_USER` and `MICROVM_HOSTNAME` as environment variables. Files they
+create in the user's home directory should be owned by that user.
+
+[provision.d.example](provision.d.example) has an example script that
+installs a few tools and sets up the user's shell. To use it:
 
 ```bash
-set -e
-apt-get install -y --no-install-recommends git
-echo 'alias ll="ls -l"' >>"/home/$MICROVM_USER/.bashrc"
+cp -r provision.d.example provision.d   # then edit or add scripts
+echo 'MICROVM_PROVISION_DIR=provision.d' >>vm.conf
+./build.sh
 ```
 
 ## Individual steps

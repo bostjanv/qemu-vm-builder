@@ -2,3 +2,4 @@
 *.raw
 /bzImage*
 /vm.conf
+/provision.d/
