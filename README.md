@@ -17,7 +17,7 @@ The goal is to minimize boot time and disk usage:
   when the guest writes later. Btrfs can also store identical data only once:
   copies made with `cp --reflink` share their data, and a deduplication tool
   such as [bees](https://github.com/Zygo/bees) can merge duplicates that
-  already exist (see [Post-installation ideas](#post-installation-ideas)).
+  already exist (see [Provisioning scripts](#provisioning-scripts)).
 
 Everything runs as your normal user, without sudo. The image is provisioned
 inside an unprivileged user namespace, and the VM uses QEMU user-mode
@@ -104,8 +104,17 @@ have network access, so they can use `apt-get install`. They also get
 `MICROVM_USER` and `MICROVM_HOSTNAME` as environment variables. Files they
 create in the user's home directory should be owned by that user.
 
-[provision.d.example](provision.d.example) has an example script that
-installs a few tools and sets up the user's shell. To use it:
+[provision.d.example](provision.d.example) has two example scripts:
+
+- `10-dev-tools.sh` installs a few tools and sets up the user's shell.
+- `20-bees.sh` builds [bees](https://github.com/Zygo/bees) from source (Ubuntu
+  has no package for it) and removes the compilers afterwards. On the first
+  boot, it configures bees for the root filesystem, sizing the hash table to
+  the filesystem, and enables `beesd@UUID.service` for background
+  deduplication. The UUID is only known then, because `mkfs.btrfs` creates it
+  after provisioning.
+
+To use them:
 
 ```bash
 cp -r provision.d.example provision.d   # then edit or add scripts
@@ -122,8 +131,3 @@ echo 'MICROVM_PROVISION_DIR=provision.d' >>vm.conf
 ./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw 8G ~/.ssh/id_ed25519.pub
 ./boot-ubuntu-microvm.sh ./bzImage ./image.raw
 ```
-
-## Post-installation ideas
-
-- Install and enable [bees](https://github.com/Zygo/bees) for background Btrfs
-  deduplication.
