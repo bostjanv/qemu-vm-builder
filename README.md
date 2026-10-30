@@ -5,6 +5,20 @@ QEMU's `microvm` machine type, a custom kernel with everything built in, and a
 raw disk image with a Btrfs root filesystem. The image has no partitions,
 bootloader, or initramfs. QEMU boots the kernel directly.
 
+The goal is to minimize boot time and disk usage:
+
+- **Boot time:** the `microvm` machine uses VirtIO MMIO devices instead of
+  PCI, and the boot script turns off legacy devices (PIT, PIC, RTC). QEMU
+  starts the kernel directly, and the kernel has no modules or initramfs to
+  load, so it mounts the root filesystem straight away.
+- **Disk usage:** the image is a sparse file, so unused space takes no room on
+  the host. The root filesystem is Btrfs, chosen for its space-saving
+  features. Data is compressed with Zstd, both when the image is built and
+  when the guest writes later. Btrfs can also store identical data only once:
+  copies made with `cp --reflink` share their data, and a deduplication tool
+  such as [bees](https://github.com/Zygo/bees) can merge duplicates that
+  already exist (see [Post-installation ideas](#post-installation-ideas)).
+
 Everything runs as your normal user, without sudo. The image is provisioned
 inside an unprivileged user namespace, and the VM uses QEMU user-mode
 networking, so the host system and network are not changed.
