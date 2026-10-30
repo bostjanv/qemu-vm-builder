@@ -12,12 +12,12 @@ Usage: build-microvm-kernel.sh [KERNEL_VERSION] [OUTPUT_BZIMAGE]
 
 Examples:
   ./build-microvm-kernel.sh
-  ./build-microvm-kernel.sh 6.18.59 ./bzImage
+  ./build-microvm-kernel.sh 6.18.59 build/bzImage
   MICROVM_KERNEL_JOBS=4 ./build-microvm-kernel.sh 6.18.59 ./kernel-microvm
 
 Defaults:
   KERNEL_VERSION       6.18.59 (Linux longterm, released October 2026)
-  OUTPUT_BZIMAGE       ./bzImage
+  OUTPUT_BZIMAGE       MICROVM_BUILD_DIR/bzImage
   MICROVM_KERNEL_JOBS  Number of available processors
   MICROVM_BUILD_DIR    ./build
 
@@ -51,7 +51,9 @@ fi
 [[ -z ${FAKEROOTKEY:-} ]] || die 'do not run under fakeroot'
 
 version=${1:-6.18.59}
-output=${2:-./bzImage}
+# Store the source/build cache on disk rather than /tmp (which might be tmpfs).
+build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
+output=${2:-$build_root/bzImage}
 jobs=${MICROVM_KERNEL_JOBS:-}
 
 [[ $version =~ ^6\.18\.[0-9]+$ ]] || \
@@ -65,12 +67,11 @@ done
 [[ -n $jobs ]] || jobs=$(nproc)
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || die "invalid MICROVM_KERNEL_JOBS: $jobs"
 
+[[ -n ${2:-} ]] || mkdir -p -- "$build_root"
 outdir=$(realpath -e -- "$(dirname -- "$output")") || die 'output directory does not exist'
 [[ -w "$outdir" ]] || die "output directory is not writable: $outdir"
 output=$outdir/$(basename -- "$output")
 
-# Store the source/build cache on disk rather than /tmp (which might be tmpfs).
-build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 work=$build_root/kernel-$version
 marker=$work/.built-by-microvm-kernel-script
 if [[ -e "$work" || -L "$work" ]]; then
@@ -260,4 +261,4 @@ publish_tmp=
 printf '\nBuilt kernel: %s\n' "$output"
 printf 'Build config: %s/.config\n' "$build_dir"
 printf 'Source and build cache: %s\n' "$work"
-printf '\nBoot with: ./boot-ubuntu-microvm.sh %q ./image.raw\n' "$output"
+printf '\nBoot with: ./boot-ubuntu-microvm.sh %q %q\n' "$output" "$build_root/image.raw"

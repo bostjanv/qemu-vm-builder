@@ -41,14 +41,14 @@ networking, so the host system and network are not changed.
 ```bash
 cp vm.conf.example vm.conf   # optional: edit the settings
 ./build.sh
-./boot-ubuntu-microvm.sh bzImage image.raw
+./boot-ubuntu-microvm.sh build/bzImage build/image.raw
 ssh -p 2222 127.0.0.1
 ```
 
 `build.sh` downloads Ubuntu Base and checks it against Ubuntu's published
-SHA256 checksum. Then it builds the kernel (`bzImage`) and the root filesystem
-image (`image.raw`). Steps whose output already exists are skipped, so delete
-an output to rebuild it.
+SHA256 checksum. Then it builds the kernel (`build/bzImage`) and the root
+filesystem image (`build/image.raw`). Steps whose output already exists are
+skipped, so delete an output to rebuild it.
 
 The image contains systemd, SSH, and DHCP networking, plus a guest user with
 the same name as your host user. That user logs in over SSH with your key and
@@ -72,8 +72,8 @@ and job settings. Run any script with `--help` for details.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `MICROVM_KERNEL` | `bzImage` | Kernel output path |
-| `MICROVM_IMAGE` | `image.raw` | Image output path |
+| `MICROVM_KERNEL` | `MICROVM_BUILD_DIR/bzImage` | Kernel output path |
+| `MICROVM_IMAGE` | `MICROVM_BUILD_DIR/image.raw` | Image output path |
 | `MICROVM_IMAGE_SIZE` | `8G` | Image size (the file is sparse) |
 | `MICROVM_UBUNTU_VERSION` | `26.04.1` | Ubuntu Base release |
 | `MICROVM_KERNEL_VERSION` | `6.18.59` | Linux 6.18.x release |
@@ -83,7 +83,7 @@ and job settings. Run any script with `--help` for details.
 | `MICROVM_SSH_PORT` | `2222` | Host port forwarded to the guest's SSH server |
 | `MICROVM_PACKAGES` | none | Extra Ubuntu packages, separated by spaces |
 | `MICROVM_PROVISION_DIR` | none | Directory of provisioning scripts (see below) |
-| `MICROVM_BUILD_DIR` | `./build` | Downloads, kernel build cache, and temporary files |
+| `MICROVM_BUILD_DIR` | `./build` | Outputs, downloads, kernel build cache, and temporary files |
 | `MICROVM_KERNEL_JOBS` | number of CPUs | Parallel kernel compile jobs |
 
 The boot script uses these environment variables:
@@ -127,7 +127,7 @@ echo 'MICROVM_PROVISION_DIR=provision.d' >>vm.conf
 `build.sh` runs these scripts, which can also be used on their own:
 
 ```bash
-./build-microvm-kernel.sh 6.18.59 ./bzImage
-./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw 8G ~/.ssh/id_ed25519.pub
-./boot-ubuntu-microvm.sh ./bzImage ./image.raw
+./build-microvm-kernel.sh 6.18.59 build/bzImage
+./prepare-ubuntu-rootfs.sh build/ubuntu-base-26.04.1-base-amd64.tar.gz build/image.raw 8G ~/.ssh/id_ed25519.pub
+./boot-ubuntu-microvm.sh build/bzImage build/image.raw
 ```

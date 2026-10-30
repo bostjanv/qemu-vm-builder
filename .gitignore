@@ -1,5 +1,3 @@
 /build/
-*.raw
-/bzImage*
-/vm.conf
+/vmconf
 /provision.d/

@@ -4,8 +4,8 @@
 # with the same names override these values.
 
 # Outputs
-#MICROVM_KERNEL=bzImage
-#MICROVM_IMAGE=image.raw
+#MICROVM_KERNEL=build/bzImage           # default: MICROVM_BUILD_DIR/bzImage
+#MICROVM_IMAGE=build/image.raw          # default: MICROVM_BUILD_DIR/image.raw
 #MICROVM_IMAGE_SIZE=8G
 
 # Sources
@@ -21,5 +21,5 @@
 #MICROVM_PROVISION_DIR=provision.d      # *.sh scripts run as root in the guest (see provision.d.example)
 
 # Build
-#MICROVM_BUILD_DIR=build                # kernel cache, downloads, temporary files
+#MICROVM_BUILD_DIR=build                # outputs, kernel cache, downloads, temporary files
 #MICROVM_KERNEL_JOBS=8                  # default: number of CPUs
