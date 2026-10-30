@@ -22,8 +22,14 @@ Optional environment variables:
   MICROVM_USER=NAME        Guest user (default: your host user name)
   MICROVM_HOSTNAME=NAME    Guest hostname (default: ubuntu-microvm)
   MICROVM_PACKAGES='A B'   Extra Ubuntu packages to install
+  MICROVM_PROVISION_DIR=PATH
+                           Directory of *.sh scripts to run as root inside the
+                           guest, in name order, after everything else is set up
   MICROVM_BUILD_DIR=PATH   Directory for temporary build files
                            (default: ./.microvm-build)
+
+Provisioning scripts run with network access, so they can use apt-get. They
+receive MICROVM_USER and MICROVM_HOSTNAME in the environment.
 
 The sparse raw image contains a Btrfs filesystem directly on /dev/vda (no
 partitions), precompressed with Zstd level 3; the guest also mounts it with
@@ -47,9 +53,26 @@ log() { printf '\n==> %s\n' "$*" >&2; }
 # system accounts map to your subordinate IDs.
 in_userns() { unshare --user --map-auto --map-root-user -- "$@"; }
 
+# Run a command in the guest with /dev and /proc mounted. The mounts exist only
+# in a private mount namespace and disappear when it exits, before mkfs.btrfs
+# reads the tree.
+run_chroot() {
+    unshare --mount --propagation private --pid --fork -- /bin/bash -c '
+        set -Eeuo pipefail
+        rootfs=$1 user=$2 hostname=$3
+        shift 3
+        mount --rbind /dev "$rootfs/dev"
+        mount -t proc proc "$rootfs/proc"
+        exec chroot "$rootfs" /usr/bin/env -i \
+            PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+            HOME=/root LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive \
+            MICROVM_USER="$user" MICROVM_HOSTNAME="$hostname" "$@"
+    ' _ "$@"
+}
+
 provision() {
-    local input=$1 rootfs=$2 image=$3 size=$4 pubkey=$5 user=$6 hostname=$7
-    shift 7
+    local input=$1 rootfs=$2 image=$3 size=$4 pubkey=$5 user=$6 hostname=$7 hooks=$8
+    shift 8
 
     log 'Extracting Ubuntu Base (preserving numeric ownership)'
     mkdir -p -- "$rootfs"
@@ -61,23 +84,19 @@ provision() {
     # it independently of archive contents and the host umask.
     chown 0:0 "$rootfs"
     chmod 755 "$rootfs"
+    install -d -m 755 "$rootfs/proc" "$rootfs/dev"
+
+    # Provide DNS while provisioning (remove a possible symlink first), and
+    # prevent maintainer scripts from starting services.
+    rm -f -- "$rootfs/etc/resolv.conf"
+    install -m 644 /etc/resolv.conf "$rootfs/etc/resolv.conf"
+    printf '#!/bin/sh\nexit 101\n' >"$rootfs/usr/sbin/policy-rc.d"
+    chmod 755 "$rootfs/usr/sbin/policy-rc.d"
 
     # This file is executed INSIDE the chroot.
     cat >"$rootfs/tmp/provision-inside.sh" <<'GUEST'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-user=$1
-shift
-export DEBIAN_FRONTEND=noninteractive
-export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-# The inherited host locale (such as en_US.UTF-8) may not exist in Ubuntu Base.
-unset LANGUAGE
-export LANG=C.UTF-8 LC_ALL=C.UTF-8
-
-# Prevent maintainer scripts from attempting to start services during build.
-printf '#!/bin/sh\nexit 101\n' >/usr/sbin/policy-rc.d
-chmod 755 /usr/sbin/policy-rc.d
-trap 'rm -f /usr/sbin/policy-rc.d' EXIT
 
 # APT's _apt helper must be able to traverse every parent directory and
 # create downloads in the partial directories.
@@ -99,35 +118,18 @@ apt-get install -y --no-install-recommends \
     echo 'sudo is missing or its setuid bit was lost' >&2
     exit 1
 }
-if ! id "$user" >/dev/null 2>&1; then
-    useradd -m -s /bin/bash "$user"
+if ! id "$MICROVM_USER" >/dev/null 2>&1; then
+    useradd -m -s /bin/bash "$MICROVM_USER"
 fi
-usermod -aG sudo "$user"
+usermod -aG sudo "$MICROVM_USER"
 ssh-keygen -A
 
 # Use the UTF-8 locale shipped by the minimal base image by default.
 printf 'LANG=C.UTF-8\n' >/etc/default/locale
-
-apt-get clean
-rm -rf /var/lib/apt/lists/*
 GUEST
 
     log 'Installing systemd, SSH, networking tools, and login packages'
-    # Provide DNS during apt installation. Remove a possible symlink first.
-    rm -f -- "$rootfs/etc/resolv.conf"
-    install -m 644 /etc/resolv.conf "$rootfs/etc/resolv.conf"
-    install -d -m 755 "$rootfs/proc" "$rootfs/dev"
-
-    # The mounts exist only in this private mount namespace and disappear
-    # when it exits, before mkfs.btrfs reads the tree.
-    unshare --mount --propagation private --pid --fork -- /bin/bash -c '
-        set -Eeuo pipefail
-        rootfs=$1
-        shift
-        mount --rbind /dev "$rootfs/dev"
-        mount -t proc proc "$rootfs/proc"
-        exec chroot "$rootfs" /bin/bash /tmp/provision-inside.sh "$@"
-    ' _ "$rootfs" "$user" "$@"
+    run_chroot "$rootfs" "$user" "$hostname" /bin/bash /tmp/provision-inside.sh "$@"
     rm -f -- "$rootfs/tmp/provision-inside.sh"
 
     log 'Configuring guest services, networking, SSH and console login'
@@ -135,7 +137,6 @@ GUEST
     printf '%s\n' '[Match]' 'Type=ether' '' '[Network]' 'DHCP=yes' \
         >"$rootfs/etc/systemd/network/10-virtio.network"
 
-    ln -sfn /run/systemd/resolve/stub-resolv.conf "$rootfs/etc/resolv.conf"
     printf '%s\n' "$hostname" >"$rootfs/etc/hostname"
 
     # Keep compression enabled for later guest writes.
@@ -143,8 +144,10 @@ GUEST
         >"$rootfs/etc/fstab"
 
     # sudo resolves the machine's own hostname; make sure /etc/hosts has it.
-    if [[ ! -e "$rootfs/etc/hosts" ]]; then
-        printf '%s\n' '127.0.0.1 localhost' >"$rootfs/etc/hosts"
+    touch -- "$rootfs/etc/hosts"
+    if ! grep -Eq '^[[:space:]]*127[.]0[.]0[.]1[[:space:]]+(.*[[:space:]])?localhost([[:space:]]|$)' \
+            "$rootfs/etc/hosts"; then
+        printf '127.0.0.1 localhost\n' >>"$rootfs/etc/hosts"
     fi
     if ! grep -Eq "^[[:space:]]*127[.]0[.]1[.]1[[:space:]]+${hostname}([[:space:]]|\$)" \
             "$rootfs/etc/hosts"; then
@@ -187,6 +190,24 @@ GUEST
         serial-getty@hvc0.service
     systemctl --root="$rootfs" set-default multi-user.target
 
+    if [[ -n $hooks ]]; then
+        local hook_dir=$rootfs/tmp/microvm-provision.d
+        install -d -m 755 "$hook_dir"
+        cp -- "$hooks"/*.sh "$hook_dir/"
+        local hook
+        for hook in "$hook_dir"/*.sh; do
+            log "Running provisioning script $(basename -- "$hook")"
+            run_chroot "$rootfs" "$user" "$hostname" \
+                /bin/bash "/tmp/microvm-provision.d/$(basename -- "$hook")"
+        done
+        rm -rf -- "$hook_dir"
+    fi
+
+    run_chroot "$rootfs" "$user" "$hostname" apt-get clean
+    rm -rf -- "$rootfs"/var/lib/apt/lists/*
+    rm -f -- "$rootfs/usr/sbin/policy-rc.d"
+    ln -sfn /run/systemd/resolve/stub-resolv.conf "$rootfs/etc/resolv.conf"
+
     # Give each newly booted VM a new machine ID.
     truncate --size 0 "$rootfs/etc/machine-id"
 
@@ -222,6 +243,7 @@ size=${3:-2G}
 pubkey=${4:-${HOME}/.ssh/id_ed25519.pub}
 user=${MICROVM_USER:-$(id -un)}
 hostname=${MICROVM_HOSTNAME:-ubuntu-microvm}
+hooks=${MICROVM_PROVISION_DIR:-}
 read -r -a packages <<<"${MICROVM_PACKAGES:-}"
 
 [[ -r "$input" && -f "$input" ]] || die "cannot read Ubuntu Base archive: $input"
@@ -234,6 +256,11 @@ read -r -a packages <<<"${MICROVM_PACKAGES:-}"
 for package in "${packages[@]}"; do
     [[ $package =~ ^[a-z0-9][a-z0-9+.:=~-]*$ ]] || die "invalid package name: $package"
 done
+if [[ -n $hooks ]]; then
+    [[ -d $hooks ]] || die "MICROVM_PROVISION_DIR is not a directory: $hooks"
+    compgen -G "$hooks/*.sh" >/dev/null || die "no *.sh scripts in MICROVM_PROVISION_DIR: $hooks"
+    hooks=$(realpath -- "$hooks")
+fi
 
 for program in unshare newuidmap newgidmap chroot systemctl tar gzip mkfs.btrfs \
                du mktemp truncate install ln grep realpath; do
@@ -267,7 +294,8 @@ cleanup() {
 trap cleanup EXIT
 
 in_userns /bin/bash "$self" --provision-internal \
-    "$input" "$work/rootfs" "$image" "$size" "$pubkey" "$user" "$hostname" "${packages[@]}"
+    "$input" "$work/rootfs" "$image" "$size" "$pubkey" "$user" "$hostname" "$hooks" \
+    "${packages[@]}"
 
 # Atomic creation, without overwriting an existing image.
 ln -- "$image" "$output" || die "could not create output: $output"

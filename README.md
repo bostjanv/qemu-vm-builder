@@ -19,74 +19,88 @@ networking, so the host system and network are not changed.
   `tar`, and `gzip`
 - A subordinate UID/GID range for your user in `/etc/subuid` and `/etc/subgid`
   (most distributions create one with the account)
-- An Ubuntu Base tarball, such as `ubuntu-base-26.04.1-base-amd64.tar.gz` from
-  <https://cdimage.ubuntu.com/ubuntu-base/releases/26.04/release/>
 - An SSH public key (the default is `~/.ssh/id_ed25519.pub`)
 
 ## Quick start
 
-### 1. Build the root filesystem image
-
 ```bash
-./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw 8G ~/.ssh/id_ed25519.pub
+cp vm.conf.example vm.conf   # optional: edit the settings
+./build.sh
+./boot-ubuntu-microvm.sh bzImage image.raw
+ssh -p 2222 127.0.0.1
 ```
 
-This creates a sparse raw image with systemd, SSH, and DHCP networking. It
-also creates a guest user with the same name as your host user. That user has
-passwordless sudo and logs in over SSH with your key. The size argument
-defaults to `2G`.
+`build.sh` downloads Ubuntu Base and checks it against Ubuntu's published
+SHA256 checksum. Then it builds the kernel (`bzImage`) and the root filesystem
+image (`image.raw`). Steps whose output already exists are skipped, so delete
+an output to rebuild it.
 
-### 2. Build the kernel
-
-```bash
-./build-microvm-kernel.sh 6.18.59 ./bzImage
-```
-
-This downloads Linux 6.18.x and builds a kernel with no modules, starting from
+The image contains systemd, SSH, and DHCP networking, plus a guest user with
+the same name as your host user. That user logs in over SSH with your key and
+has passwordless sudo. The kernel is Linux 6.18.x with no modules, built from
 Firecracker's guest configuration. All drivers needed to boot (VirtIO MMIO,
 block, network, console, and Btrfs/Zstd) are built in.
 
-### 3. Boot the VM
-
-```bash
-./boot-ubuntu-microvm.sh ./bzImage ./image.raw
-```
-
 By default the VM runs in the background with 4 vCPUs and 8 GB of RAM, and SSH
-is forwarded to `127.0.0.1:2222`. A third argument sets a different SSH port,
-which also lets you run several VMs at once. The script prints the paths of the
-console socket and log.
+is forwarded to `127.0.0.1:2222`. A third argument to the boot script sets a
+different SSH port, which also lets you run several VMs at once. To shut the VM
+down, run `ssh -p 2222 127.0.0.1 sudo poweroff`.
 
-### 4. Connect and shut down
+## Configuration
+
+`build.sh` reads `vm.conf`, or the file given as its argument. See
+[vm.conf.example](vm.conf.example). The same settings can be set as
+environment variables, which take precedence over the file. The individual
+scripts also read the user, hostname, package, provisioning, build directory,
+and job settings. Run any script with `--help` for details.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MICROVM_KERNEL` | `bzImage` | Kernel output path |
+| `MICROVM_IMAGE` | `image.raw` | Image output path |
+| `MICROVM_IMAGE_SIZE` | `8G` | Image size (the file is sparse) |
+| `MICROVM_UBUNTU_VERSION` | `26.04.1` | Ubuntu Base release |
+| `MICROVM_KERNEL_VERSION` | `6.18.59` | Linux 6.18.x release |
+| `MICROVM_USER` | your user name | Guest user name |
+| `MICROVM_HOSTNAME` | `ubuntu-microvm` | Guest hostname |
+| `MICROVM_SSH_KEY` | `~/.ssh/id_ed25519.pub` | Public key(s) allowed to log in |
+| `MICROVM_PACKAGES` | none | Extra Ubuntu packages, separated by spaces |
+| `MICROVM_PROVISION_DIR` | none | Directory of provisioning scripts (see below) |
+| `MICROVM_BUILD_DIR` | `./.microvm-build` | Downloads, kernel build cache, and temporary files |
+| `MICROVM_KERNEL_JOBS` | number of CPUs | Parallel kernel compile jobs |
+
+The boot script uses these environment variables:
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `MICROVM_MEMORY` | `8G` | Guest RAM |
+| `MICROVM_CPUS` | `4` | Number of vCPUs |
+| `MICROVM_CONSOLE` | `virtio` | `virtio` or `serial` (shows early boot logs) |
+| `MICROVM_DAEMON` | `1` | Set to `0` to run in the foreground |
+| `MICROVM_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/ubuntu-microvm-PORT` | Console socket, PID file, and log |
+
+### Provisioning scripts
+
+Set `MICROVM_PROVISION_DIR` to a directory of `*.sh` scripts. They run as
+root inside the guest, in name order, after the base system is set up. They
+have network access, so they can use `apt-get install`. They also get
+`MICROVM_USER` and `MICROVM_HOSTNAME` as environment variables. For example,
+`provision.d/10-dev-tools.sh`:
 
 ```bash
-ssh -p 2222 127.0.0.1
-ssh -p 2222 127.0.0.1 sudo poweroff
+set -e
+apt-get install -y --no-install-recommends git
+echo 'alias ll="ls -l"' >>"/home/$MICROVM_USER/.bashrc"
 ```
 
-## Customization
+## Individual steps
 
-All scripts accept these environment variables. Run any script with `--help`
-for details.
-
-| Variable | Used by | Default | Purpose |
-| --- | --- | --- | --- |
-| `MICROVM_BUILD_DIR` | rootfs, kernel | `./.microvm-build` | Kernel source and build cache, and temporary rootfs files |
-| `MICROVM_USER` | rootfs, boot | your user name | Guest user name |
-| `MICROVM_HOSTNAME` | rootfs | `ubuntu-microvm` | Guest hostname |
-| `MICROVM_PACKAGES` | rootfs | none | Extra Ubuntu packages, separated by spaces |
-| `MICROVM_KERNEL_JOBS` | kernel | number of CPUs | Parallel compile jobs |
-| `MICROVM_MEMORY` | boot | `8G` | Guest RAM |
-| `MICROVM_CPUS` | boot | `4` | Number of vCPUs |
-| `MICROVM_CONSOLE` | boot | `virtio` | `virtio` or `serial` (shows early boot logs) |
-| `MICROVM_DAEMON` | boot | `1` | Set to `0` to run in the foreground |
-| `MICROVM_RUNTIME_DIR` | boot | `$XDG_RUNTIME_DIR/ubuntu-microvm-PORT` | Console socket, PID file, and log |
-
-Example:
+`build.sh` runs these scripts, which can also be used on their own:
 
 ```bash
-MICROVM_HOSTNAME=devbox MICROVM_PACKAGES='git vim curl' \
-    ./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz devbox.raw 16G
+./build-microvm-kernel.sh 6.18.59 ./bzImage
+./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw 8G ~/.ssh/id_ed25519.pub
+./boot-ubuntu-microvm.sh ./bzImage ./image.raw
 ```
 
 ## Post-installation ideas

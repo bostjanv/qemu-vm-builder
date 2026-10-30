@@ -1,0 +1,24 @@
+# Settings for build.sh. Copy this file to vm.conf and edit it.
+# The file is sourced by bash, so use shell syntax. Relative paths are
+# relative to the directory you run build.sh from. Environment variables
+# with the same names override these values.
+
+# Outputs
+#MICROVM_KERNEL=bzImage
+#MICROVM_IMAGE=image.raw
+#MICROVM_IMAGE_SIZE=8G
+
+# Sources
+#MICROVM_UBUNTU_VERSION=26.04.1
+#MICROVM_KERNEL_VERSION=6.18.59
+
+# Guest
+#MICROVM_USER=alice                     # default: your host user name
+#MICROVM_HOSTNAME=ubuntu-microvm
+#MICROVM_SSH_KEY=$HOME/.ssh/id_ed25519.pub
+#MICROVM_PACKAGES='git vim curl'
+#MICROVM_PROVISION_DIR=provision.d      # *.sh scripts run as root in the guest
+
+# Build
+#MICROVM_BUILD_DIR=.microvm-build       # kernel cache, downloads, temporary files
+#MICROVM_KERNEL_JOBS=8                  # default: number of CPUs
