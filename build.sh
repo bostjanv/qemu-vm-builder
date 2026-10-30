@@ -51,7 +51,11 @@ export MICROVM_KERNEL=${MICROVM_KERNEL:-bzImage}
 export MICROVM_IMAGE=${MICROVM_IMAGE:-image.raw}
 export MICROVM_IMAGE_SIZE=${MICROVM_IMAGE_SIZE:-8G}
 export MICROVM_SSH_KEY=${MICROVM_SSH_KEY:-$HOME/.ssh/id_ed25519.pub}
-export MICROVM_BUILD_DIR=${MICROVM_BUILD_DIR:-.microvm-build}
+export MICROVM_SSH_PORT=${MICROVM_SSH_PORT:-2222}
+export MICROVM_BUILD_DIR=${MICROVM_BUILD_DIR:-build}
+
+[[ $MICROVM_SSH_PORT =~ ^[0-9]+$ ]] && (( 10#$MICROVM_SSH_PORT >= 1024 && 10#$MICROVM_SSH_PORT <= 65535 )) || \
+    die "MICROVM_SSH_PORT must be between 1024 and 65535: $MICROVM_SSH_PORT"
 
 version=$MICROVM_UBUNTU_VERSION
 [[ $version =~ ^([0-9]+\.[0-9]+)(\.[0-9]+)?$ ]] || \
@@ -93,4 +97,6 @@ else
         "$MICROVM_IMAGE_SIZE" "$MICROVM_SSH_KEY"
 fi
 
-printf '\nBoot with: %q %q %q\n' "$scripts/boot-ubuntu-microvm.sh" "$MICROVM_KERNEL" "$MICROVM_IMAGE"
+printf '\nBoot with: %q %q %q %q\n' "$scripts/boot-ubuntu-microvm.sh" \
+    "$MICROVM_KERNEL" "$MICROVM_IMAGE" "$MICROVM_SSH_PORT"
+printf 'SSH with:  ssh -p %s %s@127.0.0.1\n' "$MICROVM_SSH_PORT" "${MICROVM_USER:-$(id -un)}"

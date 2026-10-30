@@ -19,7 +19,7 @@ Defaults:
   KERNEL_VERSION       6.18.59 (Linux longterm, released October 2026)
   OUTPUT_BZIMAGE       ./bzImage
   MICROVM_KERNEL_JOBS  Number of available processors
-  MICROVM_BUILD_DIR    ./.microvm-build
+  MICROVM_BUILD_DIR    ./build
 
 The source, pinned Firecracker configuration, and incremental build are kept in:
   MICROVM_BUILD_DIR/kernel-VERSION/
@@ -70,7 +70,7 @@ outdir=$(realpath -e -- "$(dirname -- "$output")") || die 'output directory does
 output=$outdir/$(basename -- "$output")
 
 # Store the source/build cache on disk rather than /tmp (which might be tmpfs).
-build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-.microvm-build}")
+build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 work=$build_root/kernel-$version
 marker=$work/.built-by-microvm-kernel-script
 if [[ -e "$work" || -L "$work" ]]; then

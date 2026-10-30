@@ -11,8 +11,8 @@ Examples:
   ./boot-ubuntu-microvm.sh ./vmlinux ./image.raw
   ./boot-ubuntu-microvm.sh ./bzImage ./image.raw 2223
 
-SSH_PORT defaults to 2222. QEMU's user-mode network forwards only the host
-loopback address 127.0.0.1:SSH_PORT to port 22 inside the VM.
+SSH_PORT defaults to MICROVM_SSH_PORT, or 2222. QEMU's user-mode network
+forwards only the host loopback address 127.0.0.1:SSH_PORT to port 22 in the VM.
 
 Optional environment variables:
   MICROVM_MEMORY=8G  Guest RAM
@@ -52,7 +52,7 @@ fi
 
 kernel=$1
 disk=$2
-ssh_port=${3:-2222}
+ssh_port=${3:-${MICROVM_SSH_PORT:-2222}}
 memory=${MICROVM_MEMORY:-8G}
 cpus=${MICROVM_CPUS:-4}
 console=${MICROVM_CONSOLE:-virtio}

@@ -26,7 +26,7 @@ Optional environment variables:
                            Directory of *.sh scripts to run as root inside the
                            guest, in name order, after everything else is set up
   MICROVM_BUILD_DIR=PATH   Directory for temporary build files
-                           (default: ./.microvm-build)
+                           (default: ./build)
 
 Provisioning scripts run with network access, so they can use apt-get. They
 receive MICROVM_USER and MICROVM_HOSTNAME in the environment.
@@ -277,7 +277,7 @@ pubkey=$(realpath -- "$pubkey")
 outdir=$(realpath -- "$outdir")
 output=$outdir/$(basename -- "$output")
 self=$(realpath -- "$0")
-build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-.microvm-build}")
+build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 
 mkdir -p -- "$build_root"
 work=$(mktemp -d "$build_root/rootfs.XXXXXXXX")

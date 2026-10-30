@@ -1,4 +1,4 @@
-/.microvm-build/
+/build/
 *.raw
 /bzImage*
 /vm.conf

@@ -42,8 +42,9 @@ Firecracker's guest configuration. All drivers needed to boot (VirtIO MMIO,
 block, network, console, and Btrfs/Zstd) are built in.
 
 By default the VM runs in the background with 4 vCPUs and 8 GB of RAM, and SSH
-is forwarded to `127.0.0.1:2222`. A third argument to the boot script sets a
-different SSH port, which also lets you run several VMs at once. To shut the VM
+is forwarded to `127.0.0.1:2222`. Set `MICROVM_SSH_PORT` in `vm.conf` to use a
+different port; `build.sh` prints the matching boot and SSH commands. A
+different port per VM lets you run several VMs at once. To shut the VM
 down, run `ssh -p 2222 127.0.0.1 sudo poweroff`.
 
 ## Configuration
@@ -64,9 +65,10 @@ and job settings. Run any script with `--help` for details.
 | `MICROVM_USER` | your user name | Guest user name |
 | `MICROVM_HOSTNAME` | `ubuntu-microvm` | Guest hostname |
 | `MICROVM_SSH_KEY` | `~/.ssh/id_ed25519.pub` | Public key(s) allowed to log in |
+| `MICROVM_SSH_PORT` | `2222` | Host port forwarded to the guest's SSH server |
 | `MICROVM_PACKAGES` | none | Extra Ubuntu packages, separated by spaces |
 | `MICROVM_PROVISION_DIR` | none | Directory of provisioning scripts (see below) |
-| `MICROVM_BUILD_DIR` | `./.microvm-build` | Downloads, kernel build cache, and temporary files |
+| `MICROVM_BUILD_DIR` | `./build` | Downloads, kernel build cache, and temporary files |
 | `MICROVM_KERNEL_JOBS` | number of CPUs | Parallel kernel compile jobs |
 
 The boot script uses these environment variables:
