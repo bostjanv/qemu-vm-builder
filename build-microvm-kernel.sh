@@ -19,9 +19,10 @@ Defaults:
   KERNEL_VERSION       6.18.59 (Linux longterm, released October 2026)
   OUTPUT_BZIMAGE       ./bzImage
   MICROVM_KERNEL_JOBS  Number of available processors
+  MICROVM_BUILD_DIR    ./.microvm-build
 
 The source, pinned Firecracker configuration, and incremental build are kept in:
-  ./.microvm-kernel-build-VERSION/
+  MICROVM_BUILD_DIR/kernel-VERSION/
 
 Only 6.18.x kernels are supported: the Firecracker baseline is for Linux 6.18.
 The baseline is pinned to Firecracker's public guest kernel configuration;
@@ -69,14 +70,15 @@ outdir=$(realpath -e -- "$(dirname -- "$output")") || die 'output directory does
 output=$outdir/$(basename -- "$output")
 
 # Store the source/build cache on disk rather than /tmp (which might be tmpfs).
-work=$PWD/.microvm-kernel-build-$version
+build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-.microvm-build}")
+work=$build_root/kernel-$version
 marker=$work/.built-by-microvm-kernel-script
 if [[ -e "$work" || -L "$work" ]]; then
     [[ -d "$work" && ! -L "$work" && -f "$marker" ]] || \
         die "refusing to use existing, unmanaged build directory: $work"
     [[ $(<"$marker") == "$version" ]] || die "unexpected version marker in $work"
 else
-    mkdir -- "$work"
+    mkdir -p -- "$work"
     printf '%s\n' "$version" >"$marker"
 fi
 

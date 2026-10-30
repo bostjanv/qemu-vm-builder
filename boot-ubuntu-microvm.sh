@@ -20,6 +20,7 @@ Optional environment variables:
   MICROVM_CONSOLE=virtio  Console: virtio (default) or serial (early boot logs)
   MICROVM_DAEMON=1    Background execution (default); use 0 for foreground
   MICROVM_RUNTIME_DIR=PATH  Private directory for daemon socket, PID and log
+  MICROVM_USER=NAME   Guest user shown in the SSH hints (default: your user)
 
 Requires a KVM-capable x86-64 host and a kernel with Btrfs, virtio-mmio,
 virtio-blk, and virtio-mmio command-line discovery built in. The serial
@@ -56,6 +57,7 @@ memory=${MICROVM_MEMORY:-8G}
 cpus=${MICROVM_CPUS:-4}
 console=${MICROVM_CONSOLE:-virtio}
 daemon=${MICROVM_DAEMON:-1}
+guest_user=${MICROVM_USER:-$(id -un)}
 
 [[ -r $kernel && -f $kernel ]] || die "cannot read kernel: $kernel"
 [[ -r $disk && -f $disk ]] || die "cannot read raw Btrfs image: $disk"
@@ -128,7 +130,7 @@ case $console in
 esac
 
 printf 'Starting Ubuntu microVM: %s\n' "$disk"
-printf 'SSH after boot: ssh -p %s alice@127.0.0.1\n' "$ssh_port"
+printf 'SSH after boot: ssh -p %s %s@127.0.0.1\n' "$ssh_port" "$guest_user"
 printf 'Console: %s\n' "$console"
 if [[ $daemon == 1 ]]; then
     printf 'Mode: daemon (background)\n'
@@ -136,7 +138,7 @@ if [[ $daemon == 1 ]]; then
     printf 'Console log: %s\n' "$console_log"
     printf 'Connect: socat -,rawer,escape=0x1d UNIX-CONNECT:%q\n' "$console_socket"
     printf 'Detach from console: Ctrl+]\n'
-    printf 'Stop VM: ssh -p %s alice@127.0.0.1 sudo poweroff\n\n' "$ssh_port"
+    printf 'Stop VM: ssh -p %s %s@127.0.0.1 sudo poweroff\n\n' "$ssh_port" "$guest_user"
 else
     printf 'Mode: foreground\n'
     [[ $console != serial ]] || printf 'QEMU exit shortcut: Ctrl+A, then X\n'
