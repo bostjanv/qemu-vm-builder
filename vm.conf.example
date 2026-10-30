@@ -20,5 +20,5 @@
 #MICROVM_PROVISION_DIR=provision.d      # *.sh scripts run as root in the guest
 
 # Build
-#MICROVM_BUILD_DIR=.microvm-build       # kernel cache, downloads, temporary files
+#MICROVM_BUILD_DIR=build                # kernel cache, downloads, temporary files
 #MICROVM_KERNEL_JOBS=8                  # default: number of CPUs
