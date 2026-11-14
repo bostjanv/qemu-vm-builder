@@ -20,14 +20,18 @@ Defaults:
   OUTPUT_BZIMAGE       MICROVM_BUILD_DIR/bzImage
   MICROVM_KERNEL_JOBS  Number of available processors
   MICROVM_BUILD_DIR    ./build
+  MICROVM_KERNEL_USB   0; set to 1 to build in USB support (USB core and the
+                       xHCI controller of QEMU's microvm usb=on) for USB
+                       passthrough. Device class drivers are not included.
 
 The source, pinned Firecracker configuration, and incremental build are kept in:
   MICROVM_BUILD_DIR/kernel-VERSION/
 
 Only 6.18.x kernels are supported: the Firecracker baseline is for Linux 6.18.
 The baseline is pinned to Firecracker's public guest kernel configuration;
-the script removes optional SCSI/USB, ext4/NFS/XFS/overlay, netfilter and extra
-VirtIO transports, while enabling built-in Btrfs/Zstd, systemd and SSH.
+the script removes optional SCSI, USB (unless MICROVM_KERNEL_USB=1),
+ext4/NFS/XFS/overlay, netfilter and extra VirtIO transports, while enabling
+built-in Btrfs/Zstd, systemd and SSH.
 
 Required host tools: curl, tar, xz, gcc, make, bc, bison, flex, perl,
 plus the usual Linux kernel development headers/libraries (libelf and libssl).
@@ -55,6 +59,7 @@ version=${1:-6.18.63}
 build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 output=${2:-$build_root/bzImage}
 jobs=${MICROVM_KERNEL_JOBS:-}
+usb=${MICROVM_KERNEL_USB:-0}
 
 [[ $version =~ ^6\.18\.[0-9]+$ ]] || \
     die "this Firecracker configuration is intended for Linux 6.18.x (got $version)"
@@ -66,6 +71,7 @@ for program in curl tar xz gcc make bc bison flex perl awk grep mktemp realpath 
 done
 [[ -n $jobs ]] || jobs=$(nproc)
 [[ $jobs =~ ^[1-9][0-9]*$ ]] || die "invalid MICROVM_KERNEL_JOBS: $jobs"
+[[ $usb == 0 || $usb == 1 ]] || die "MICROVM_KERNEL_USB must be 0 or 1: $usb"
 
 [[ -n ${2:-} ]] || mkdir -p -- "$build_root"
 outdir=$(realpath -e -- "$(dirname -- "$output")") || die 'output directory does not exist'
@@ -195,7 +201,6 @@ config=$source_dir/scripts/config
     --disable MODULES \
     --disable BLK_DEV_INITRD \
     --disable SCSI \
-    --disable USB_SUPPORT \
     --disable EXT4_FS \
     --disable XFS_FS \
     --disable NFS_FS \
@@ -217,6 +222,23 @@ config=$source_dir/scripts/config
     --enable DEBUG_INFO_NONE \
     --set-str LOCALVERSION -microvm
 
+# QEMU's microvm machine with usb=on has a platform xHCI controller, described
+# in ACPI, so USB needs no PCI host drivers.
+if [[ $usb == 1 ]]; then
+    usb_required=(USB_SUPPORT USB USB_XHCI_HCD USB_XHCI_PLATFORM)
+    usb_disabled=()
+    "$config" --file "$build_dir/.config" \
+        --enable USB_SUPPORT \
+        --enable USB \
+        --enable USB_XHCI_HCD \
+        --enable USB_XHCI_PLATFORM \
+        --disable USB_PCI
+else
+    usb_required=()
+    usb_disabled=(USB_SUPPORT)
+    "$config" --file "$build_dir/.config" --disable USB_SUPPORT
+fi
+
 log 'Resolving Kconfig dependencies'
 make -C "$source_dir" O="$build_dir" ARCH=x86_64 olddefconfig
 
@@ -229,14 +251,14 @@ for option in KVM_GUEST ACPI PCI VIRTIO VIRTIO_MMIO \
               TMPFS TMPFS_POSIX_ACL PROC_FS SYSFS FHANDLE SECCOMP \
               SECCOMP_FILTER SERIAL_8250_CONSOLE PRINTK UNIX98_PTYS \
               BINFMT_ELF BINFMT_SCRIPT EPOLL SIGNALFD TIMERFD EVENTFD \
-              INOTIFY_USER CC_OPTIMIZE_FOR_SIZE; do
+              INOTIFY_USER CC_OPTIMIZE_FOR_SIZE "${usb_required[@]}"; do
     grep -Fqx "CONFIG_${option}=y" "$build_dir/.config" || \
         die "CONFIG_${option}=y was not selected; inspect $build_dir/.config"
 done
 grep -Fqx '# CONFIG_MODULES is not set' "$build_dir/.config" || \
     die 'expected a self-contained kernel with CONFIG_MODULES=n'
-for option in BLK_DEV_INITRD SCSI USB_SUPPORT EXT4_FS XFS_FS NFS_FS OVERLAY_FS \
-              NETFILTER VIRTIO_PCI VIRTIO_VSOCKETS VSOCKETS; do
+for option in BLK_DEV_INITRD SCSI EXT4_FS XFS_FS NFS_FS OVERLAY_FS \
+              NETFILTER VIRTIO_PCI VIRTIO_VSOCKETS VSOCKETS "${usb_disabled[@]}"; do
     # A disabled parent menu may remove the option from .config entirely.
     if grep -Eq "^CONFIG_${option}=[ym]$" "$build_dir/.config"; then
         die "CONFIG_${option} is still enabled; inspect $build_dir/.config"

@@ -89,6 +89,7 @@ and job settings. Run any script with `--help` for details.
 | `MICROVM_PROVISION_DIR` | none | Directory of provisioning scripts (see below) |
 | `MICROVM_BUILD_DIR` | `./build` | Outputs, downloads, kernel build cache, and temporary files |
 | `MICROVM_KERNEL_JOBS` | number of CPUs | Parallel kernel compile jobs |
+| `MICROVM_KERNEL_USB` | `0` | Set to `1` to build USB support into the kernel (see [USB passthrough](#usb-passthrough)) |
 
 The boot script uses these environment variables:
 
@@ -99,6 +100,7 @@ The boot script uses these environment variables:
 | `MICROVM_CONSOLE` | `virtio` | `virtio` or `serial` (shows early boot logs) |
 | `MICROVM_DAEMON` | `1` | Set to `0` to run in the foreground |
 | `MICROVM_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/debian-microvm-PORT` | Console socket, PID file, and log |
+| `MICROVM_USB_DEVICES` | none | Host USB devices to pass through, as `VENDOR:PRODUCT` IDs separated by spaces |
 
 ### Provisioning scripts
 
@@ -125,6 +127,35 @@ cp -r provision.d.example provision.d   # then edit or add scripts
 echo 'MICROVM_PROVISION_DIR=provision.d' >>vm.conf
 ./build.sh
 ```
+
+### USB passthrough
+
+The kernel has no USB support by default. To pass a host USB device through
+to the VM:
+
+1. Set `MICROVM_KERNEL_USB=1` in `vm.conf`, delete `build/bzImage`, and run
+   `./build.sh`. The kernel then has the USB core and the xHCI controller
+   that QEMU adds to the `microvm` machine, without PCI.
+2. Give your user read/write access to the device on the host. Device nodes
+   in `/dev/bus/usb` usually belong to root; a udev rule can grant access,
+   for example
+   `SUBSYSTEM=="usb", ATTR{idVendor}=="0403", ATTR{idProduct}=="6001", TAG+="uaccess"`
+   in `/etc/udev/rules.d/70-microvm-usb.rules` grants it to the user logged
+   in at the local seat.
+3. Boot with the device's vendor and product ID, as shown by `lsusb`:
+
+   ```bash
+   MICROVM_USB_DEVICES=0403:6001 ./boot-debian-microvm.sh build/bzImage build/image.raw
+   ```
+
+The boot script stops if the device is connected but not accessible. A
+device that is not connected yet is attached when it is plugged in. If
+several connected devices have the same IDs, QEMU passes through one of them.
+
+In the guest, the device appears in `/dev/bus/usb`, so programs that use
+libusb can drive it. The kernel includes no USB device drivers, such as
+USB serial adapters, storage, or keyboards, because modules are disabled;
+add the ones you need to `build-microvm-kernel.sh`.
 
 ## Individual steps
 

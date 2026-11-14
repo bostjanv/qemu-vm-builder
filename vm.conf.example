@@ -23,3 +23,4 @@
 # Build
 #MICROVM_BUILD_DIR=build                # outputs, kernel cache, downloads, temporary files
 #MICROVM_KERNEL_JOBS=8                  # default: number of CPUs
+#MICROVM_KERNEL_USB=1                   # build in USB support for passthrough (default: 0)

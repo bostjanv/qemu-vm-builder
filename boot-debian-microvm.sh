@@ -21,6 +21,10 @@ Optional environment variables:
   MICROVM_DAEMON=1    Background execution (default); use 0 for foreground
   MICROVM_RUNTIME_DIR=PATH  Private directory for daemon socket, PID and log
   MICROVM_USER=NAME   Guest user shown in the SSH hints (default: your user)
+  MICROVM_USB_DEVICES='VENDOR:PRODUCT ...'
+                      Host USB devices to pass through, such as 0403:6001
+                      (see lsusb). Needs a kernel built with MICROVM_KERNEL_USB=1
+                      and read/write access to the device in /dev/bus/usb.
 
 Requires a KVM-capable x86-64 host and a kernel with Btrfs, virtio-mmio,
 virtio-blk, and virtio-mmio command-line discovery built in. The serial
@@ -58,6 +62,7 @@ cpus=${MICROVM_CPUS:-4}
 console=${MICROVM_CONSOLE:-virtio}
 daemon=${MICROVM_DAEMON:-1}
 guest_user=${MICROVM_USER:-$(id -un)}
+read -r -a usb_devices <<<"${MICROVM_USB_DEVICES:-}"
 
 [[ -r $kernel && -f $kernel ]] || die "cannot read kernel: $kernel"
 [[ -r $disk && -f $disk ]] || die "cannot read raw Btrfs image: $disk"
@@ -66,6 +71,10 @@ guest_user=${MICROVM_USER:-$(id -un)}
 [[ $cpus =~ ^[1-9][0-9]*$ ]] || die 'MICROVM_CPUS must be a positive integer'
 [[ $memory =~ ^[1-9][0-9]*[kKmMgG]?$ ]] || die 'MICROVM_MEMORY must be a size like 512M or 1G'
 [[ $daemon == 0 || $daemon == 1 ]] || die 'MICROVM_DAEMON must be 0 or 1'
+for device in "${usb_devices[@]}"; do
+    [[ $device =~ ^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$ ]] || \
+        die "invalid USB device in MICROVM_USB_DEVICES: $device (expected VENDOR:PRODUCT, such as 0403:6001)"
+done
 
 case $console in
     serial)
@@ -78,6 +87,29 @@ case $console in
         ;;
     *) die "invalid MICROVM_CONSOLE: $console (expected serial or virtio)" ;;
 esac
+
+# QEMU opens passed-through devices in /dev/bus/usb, which usually only root
+# can write. Fail here rather than inside QEMU. A device that is not plugged in
+# yet is attached by QEMU when it appears.
+usb_args=()
+if (( ${#usb_devices[@]} )); then
+    # A platform xHCI controller, described to the guest in ACPI.
+    machine+=,usb=on
+    for device in "${usb_devices[@]}"; do
+        device=${device,,}
+        found=0
+        for dir in /sys/bus/usb/devices/*; do
+            [[ -r $dir/idVendor && -r $dir/idProduct ]] || continue
+            [[ $(<"$dir/idVendor"):$(<"$dir/idProduct") == "$device" ]] || continue
+            found=1
+            printf -v node '/dev/bus/usb/%03d/%03d' "$(<"$dir/busnum")" "$(<"$dir/devnum")"
+            [[ -r $node && -w $node ]] || \
+                die "no read/write access to USB device $device ($node); grant it to your user, for example with a udev rule"
+        done
+        (( found )) || printf 'Warning: USB device %s is not connected; QEMU attaches it when it appears\n' "$device" >&2
+        usb_args+=(-device "usb-host,vendorid=0x${device%:*},productid=0x${device#*:}")
+    done
+fi
 
 command -v qemu-system-x86_64 >/dev/null 2>&1 || die 'qemu-system-x86_64 is not installed'
 [[ -r /dev/kvm && -w /dev/kvm ]] || die 'no access to /dev/kvm (check KVM availability and permissions)'
@@ -154,6 +186,7 @@ exec qemu-system-x86_64 \
     -append "$kernel_append" \
     -nodefaults -no-user-config "${qemu_display[@]}" -no-reboot \
     "${console_args[@]}" \
+    "${usb_args[@]}" \
     -drive "id=rootdisk,file=$disk,format=raw,if=none,discard=unmap,detect-zeroes=unmap" \
     -device virtio-blk-device,drive=rootdisk \
     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
