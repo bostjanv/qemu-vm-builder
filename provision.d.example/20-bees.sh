@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Example provisioning script: build and install bees, the Btrfs deduplication
 # daemon (https://github.com/Zygo/bees), and run it on the root filesystem.
-# Ubuntu has no bees package, so it is built from source. The latest release,
-# v0.11, does not compile with Ubuntu 26.04's glibc, so a newer commit is pinned.
+# Debian has no bees package, so it is built from source. The latest release,
+# v0.11, does not compile with recent glibc versions, so a newer commit is pinned.
 set -Eeuo pipefail
 
 commit=2d53565c74d3b1db9e035f55c5d67868147b568f

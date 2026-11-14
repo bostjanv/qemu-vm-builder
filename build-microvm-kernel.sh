@@ -12,11 +12,11 @@ Usage: build-microvm-kernel.sh [KERNEL_VERSION] [OUTPUT_BZIMAGE]
 
 Examples:
   ./build-microvm-kernel.sh
-  ./build-microvm-kernel.sh 6.18.59 build/bzImage
-  MICROVM_KERNEL_JOBS=4 ./build-microvm-kernel.sh 6.18.59 ./kernel-microvm
+  ./build-microvm-kernel.sh 6.18.63 build/bzImage
+  MICROVM_KERNEL_JOBS=4 ./build-microvm-kernel.sh 6.18.63 ./kernel-microvm
 
 Defaults:
-  KERNEL_VERSION       6.18.59 (Linux longterm, released October 2026)
+  KERNEL_VERSION       6.18.63 (Linux longterm, released November 2026)
   OUTPUT_BZIMAGE       MICROVM_BUILD_DIR/bzImage
   MICROVM_KERNEL_JOBS  Number of available processors
   MICROVM_BUILD_DIR    ./build
@@ -34,7 +34,7 @@ plus the usual Linux kernel development headers/libraries (libelf and libssl).
 For Arch Linux, install build dependencies through pacman if needed.
 
 Everything runs as your normal user. Existing output files are never replaced.
-This builds only the kernel; it does not boot QEMU or modify the Ubuntu raw image.
+This builds only the kernel; it does not boot QEMU or modify the Debian raw image.
 EOF
 }
 
@@ -50,7 +50,7 @@ fi
 (( EUID != 0 )) || die 'run as your ordinary user, without sudo or fakeroot'
 [[ -z ${FAKEROOTKEY:-} ]] || die 'do not run under fakeroot'
 
-version=${1:-6.18.59}
+version=${1:-6.18.63}
 # Store the source/build cache on disk rather than /tmp (which might be tmpfs).
 build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 output=${2:-$build_root/bzImage}
@@ -261,4 +261,4 @@ publish_tmp=
 printf '\nBuilt kernel: %s\n' "$output"
 printf 'Build config: %s/.config\n' "$build_dir"
 printf 'Source and build cache: %s\n' "$work"
-printf '\nBoot with: ./boot-ubuntu-microvm.sh %q %q\n' "$output" "$build_root/image.raw"
+printf '\nBoot with: ./boot-debian-microvm.sh %q %q\n' "$output" "$build_root/image.raw"

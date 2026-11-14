@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# Launch the partitionless Btrfs raw disk built by prepare-ubuntu-rootfs.sh.
+# Launch the partitionless Btrfs raw disk built by prepare-debian-rootfs.sh.
 # No sudo, TAP devices, bridges, or host network changes are required.
 set -euo pipefail
 
 usage() {
     cat <<'EOF'
-Usage: boot-ubuntu-microvm.sh KERNEL IMAGE.raw [SSH_PORT]
+Usage: boot-debian-microvm.sh KERNEL IMAGE.raw [SSH_PORT]
 
 Examples:
-  ./boot-ubuntu-microvm.sh ./vmlinux ./image.raw
-  ./boot-ubuntu-microvm.sh ./bzImage ./image.raw 2223
+  ./boot-debian-microvm.sh ./vmlinux ./image.raw
+  ./boot-debian-microvm.sh ./bzImage ./image.raw 2223
 
 SSH_PORT defaults to MICROVM_SSH_PORT, or 2222. QEMU's user-mode network
 forwards only the host loopback address 127.0.0.1:SSH_PORT to port 22 in the VM.
@@ -32,7 +32,7 @@ the guest boots systemd as PID 1.
 In daemon mode, the console is available over a Unix socket (connect with
 socat) and its output is logged. The default private runtime directory is
 under XDG_RUNTIME_DIR (if set) or the current directory, named
-ubuntu-microvm-SSH_PORT. The SSH port is used to distinguish VMs.
+debian-microvm-SSH_PORT. The SSH port is used to distinguish VMs.
 In foreground mode, QEMU uses stdin/stdout for the selected console.
 Keep x-option-roms=on: QEMU's direct -kernel boot requires its linuxboot ROM,
 because the raw root disk intentionally has no bootloader.
@@ -83,7 +83,7 @@ command -v qemu-system-x86_64 >/dev/null 2>&1 || die 'qemu-system-x86_64 is not 
 [[ -r /dev/kvm && -w /dev/kvm ]] || die 'no access to /dev/kvm (check KVM availability and permissions)'
 
 if [[ $daemon == 1 ]]; then
-    runtime_dir=${MICROVM_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-$PWD}/ubuntu-microvm-$ssh_port}
+    runtime_dir=${MICROVM_RUNTIME_DIR:-${XDG_RUNTIME_DIR:-$PWD}/debian-microvm-$ssh_port}
     [[ $runtime_dir == /* ]] || runtime_dir=$PWD/$runtime_dir
     [[ ! -L $runtime_dir ]] || die "runtime directory is a symlink: $runtime_dir"
     if [[ ! -d $runtime_dir ]]; then
@@ -131,7 +131,7 @@ case $console in
         ;;
 esac
 
-printf 'Starting Ubuntu microVM: %s\n' "$disk"
+printf 'Starting Debian microVM: %s\n' "$disk"
 printf 'SSH after boot: ssh -p %s %s@127.0.0.1\n' "$ssh_port" "$guest_user"
 printf 'Console: %s\n' "$console"
 if [[ $daemon == 1 ]]; then

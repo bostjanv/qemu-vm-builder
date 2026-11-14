@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Build everything needed to boot a microVM: download Ubuntu Base, build the
-# kernel, and build the root filesystem image. Steps whose output already
-# exists are skipped.
+# Build everything needed to boot a microVM: download the Debian root
+# filesystem, build the kernel, and build the root filesystem image. Steps
+# whose output already exists are skipped.
 set -Eeuo pipefail
 
 usage() {
@@ -11,7 +11,7 @@ Usage: build.sh [CONFIG]
 Reads settings from CONFIG (default: ./vm.conf, if it exists). See
 vm.conf.example for every setting. Environment variables override the file.
 
-Outputs that already exist (kernel, image, Ubuntu Base download) are reused;
+Outputs that already exist (kernel, image, Debian download) are reused;
 delete one to rebuild it.
 EOF
 }
@@ -47,8 +47,8 @@ elif (( $# == 1 )); then
     die "config file not found: $config"
 fi
 
-export MICROVM_UBUNTU_VERSION=${MICROVM_UBUNTU_VERSION:-26.04.1}
-export MICROVM_KERNEL_VERSION=${MICROVM_KERNEL_VERSION:-6.18.59}
+export MICROVM_DEBIAN_RELEASE=${MICROVM_DEBIAN_RELEASE:-trixie}
+export MICROVM_KERNEL_VERSION=${MICROVM_KERNEL_VERSION:-6.18.63}
 export MICROVM_BUILD_DIR=${MICROVM_BUILD_DIR:-build}
 export MICROVM_KERNEL=${MICROVM_KERNEL:-$MICROVM_BUILD_DIR/bzImage}
 export MICROVM_IMAGE=${MICROVM_IMAGE:-$MICROVM_BUILD_DIR/image.raw}
@@ -61,27 +61,27 @@ if ! [[ $MICROVM_SSH_PORT =~ ^[0-9]+$ ]] ||
     die "MICROVM_SSH_PORT must be between 1024 and 65535: $MICROVM_SSH_PORT"
 fi
 
-version=$MICROVM_UBUNTU_VERSION
-[[ $version =~ ^([0-9]+\.[0-9]+)(\.[0-9]+)?$ ]] || \
-    die "invalid MICROVM_UBUNTU_VERSION: $version"
-series=${BASH_REMATCH[1]}
-base_name=ubuntu-base-$version-base-amd64.tar.gz
-base_url=https://cdimage.ubuntu.com/ubuntu-base/releases/$series/release
-archive=$MICROVM_BUILD_DIR/$base_name
+release=$MICROVM_DEBIAN_RELEASE
+[[ $release =~ ^[a-z]+$ ]] || die "invalid MICROVM_DEBIAN_RELEASE: $release"
+# The root filesystem of Debian's official Docker image, built by debuerreotype.
+# The OCI manifest next to it holds its SHA256 digest.
+base_url=https://raw.githubusercontent.com/debuerreotype/docker-debian-artifacts/dist-amd64/$release/oci/blobs
+archive=$MICROVM_BUILD_DIR/debian-$release-amd64-rootfs.tar.gz
 
 mkdir -p -- "$MICROVM_BUILD_DIR"
 if [[ -s $archive ]]; then
     log "Reusing $archive"
 else
-    log "Downloading $base_name"
+    log "Downloading Debian $release root filesystem"
     download=$(mktemp "$MICROVM_BUILD_DIR/.download.XXXXXXXX")
     trap 'rm -f -- "$download"' EXIT
-    checksum=$(curl --fail --location --silent --show-error "$base_url/SHA256SUMS" |
-        awk -v name="$base_name" '$2 == "*" name || $2 == name { print $1 }')
-    [[ $checksum =~ ^[0-9a-f]{64}$ ]] || die "no checksum for $base_name in $base_url/SHA256SUMS"
-    curl --fail --location --show-error --retry 3 --output "$download" "$base_url/$base_name"
+    manifest=$(curl --fail --location --silent --show-error "$base_url/image-manifest.json") || \
+        die "cannot download $base_url/image-manifest.json (is $release a Debian release?)"
+    checksum=$(sed -n 's/.*"layers":\[[^]]*"digest":"sha256:\([0-9a-f]\{64\}\)".*/\1/p' <<<"$manifest")
+    [[ $checksum =~ ^[0-9a-f]{64}$ ]] || die "no layer digest in $base_url/image-manifest.json"
+    curl --fail --location --show-error --retry 3 --output "$download" "$base_url/rootfs.tar.gz"
     printf '%s  %s\n' "$checksum" "$download" | sha256sum -c --status || \
-        die "checksum mismatch for $base_name"
+        die "checksum mismatch for the Debian $release root filesystem"
     mv -- "$download" "$archive"
     trap - EXIT
 fi
@@ -97,10 +97,10 @@ if [[ -e $MICROVM_IMAGE ]]; then
     log "Reusing image $MICROVM_IMAGE"
 else
     log "Building image $MICROVM_IMAGE"
-    "$scripts/prepare-ubuntu-rootfs.sh" "$archive" "$MICROVM_IMAGE" \
+    "$scripts/prepare-debian-rootfs.sh" "$archive" "$MICROVM_IMAGE" \
         "$MICROVM_IMAGE_SIZE" "$MICROVM_SSH_KEY"
 fi
 
-printf '\nBoot with: %q %q %q %q\n' "$scripts/boot-ubuntu-microvm.sh" \
+printf '\nBoot with: %q %q %q %q\n' "$scripts/boot-debian-microvm.sh" \
     "$MICROVM_KERNEL" "$MICROVM_IMAGE" "$MICROVM_SSH_PORT"
 printf 'SSH with:  ssh -p %s %s@127.0.0.1\n' "$MICROVM_SSH_PORT" "${MICROVM_USER:-$(id -un)}"

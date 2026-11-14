@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Provision Ubuntu Base 26.04 with systemd, DHCP, DNS, SSH and a console login,
+# Provision a Debian root filesystem with systemd, DHCP, DNS, SSH and a console login,
 # then pack a partitionless, Zstd-compressed Btrfs filesystem into a sparse raw image.
 #
 # Runs entirely as your normal user: provisioning happens inside an
@@ -10,18 +10,21 @@ set -Eeuo pipefail
 usage() {
     cat <<'EOF'
 Usage:
-  prepare-ubuntu-rootfs.sh UBUNTU_BASE.tar.gz OUTPUT.raw [SIZE] [SSH_PUBLIC_KEY]
+  prepare-debian-rootfs.sh DEBIAN_ROOTFS.tar.gz OUTPUT.raw [SIZE] [SSH_PUBLIC_KEY]
 
 Examples:
-  ./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw
-  MICROVM_PACKAGES='git vim' ./prepare-ubuntu-rootfs.sh ubuntu-base-26.04.1-base-amd64.tar.gz image.raw 16G
+  ./prepare-debian-rootfs.sh debian-trixie-amd64-rootfs.tar.gz image.raw
+  MICROVM_PACKAGES='git vim' ./prepare-debian-rootfs.sh debian-trixie-amd64-rootfs.tar.gz image.raw 16G
+
+DEBIAN_ROOTFS.tar.gz is the root filesystem of Debian's official Docker image,
+as downloaded by build.sh.
 
 SIZE defaults to 2G. SSH_PUBLIC_KEY defaults to ~/.ssh/id_ed25519.pub.
 
 Optional environment variables:
   MICROVM_USER=NAME        Guest user (default: your host user name)
-  MICROVM_HOSTNAME=NAME    Guest hostname (default: ubuntu-microvm)
-  MICROVM_PACKAGES='A B'   Extra Ubuntu packages to install
+  MICROVM_HOSTNAME=NAME    Guest hostname (default: debian-microvm)
+  MICROVM_PACKAGES='A B'   Extra Debian packages to install
   MICROVM_PROVISION_DIR=PATH
                            Directory of *.sh scripts to run as root inside the
                            guest, in name order, after everything else is set up
@@ -76,7 +79,7 @@ provision() {
     local input=$1 rootfs=$2 image=$3 size=$4 pubkey=$5 user=$6 hostname=$7 hooks=$8
     shift 8
 
-    log 'Extracting Ubuntu Base (preserving numeric ownership)'
+    log 'Extracting the Debian root filesystem (preserving numeric ownership)'
     mkdir -p -- "$rootfs"
     tar --extract --gzip --file "$input" --directory "$rootfs" \
         --numeric-owner --same-owner --preserve-permissions \
@@ -87,6 +90,10 @@ provision() {
     chown 0:0 "$rootfs"
     chmod 755 "$rootfs"
     install -d -m 755 "$rootfs/proc" "$rootfs/dev"
+
+    # The Docker image tunes APT and dpkg for throwaway containers, for example
+    # with dpkg's force-unsafe-io. Remove the tweaks: the VM disk persists.
+    rm -f -- "$rootfs"/etc/apt/apt.conf.d/docker-* "$rootfs"/etc/dpkg/dpkg.cfg.d/docker-*
 
     # Provide DNS while provisioning (remove a possible symlink first), and
     # prevent maintainer scripts from starting services.
@@ -102,7 +109,7 @@ set -Eeuo pipefail
 
 # APT's _apt helper must be able to traverse every parent directory and
 # create downloads in the partial directories.
-id _apt >/dev/null 2>&1 || { echo 'Ubuntu Base has no _apt user' >&2; exit 1; }
+id _apt >/dev/null 2>&1 || { echo 'the Debian root filesystem has no _apt user' >&2; exit 1; }
 for dir in /var /var/cache /var/cache/apt /var/cache/apt/archives \
            /var/lib /var/lib/apt /var/lib/apt/lists; do
     install -d -o root -g root -m 755 "$dir"
@@ -142,7 +149,7 @@ GUEST
     printf '%s\n' "$hostname" >"$rootfs/etc/hostname"
 
     # Keep compression enabled for later guest writes.
-    printf '%s\n' 'LABEL=ubuntu-root / btrfs defaults,compress=zstd:3 0 0' \
+    printf '%s\n' 'LABEL=debian-root / btrfs defaults,compress=zstd:3 0 0' \
         >"$rootfs/etc/fstab"
 
     # sudo resolves the machine's own hostname; make sure /etc/hosts has it.
@@ -216,7 +223,7 @@ GUEST
     # /dev stays empty: the kernel mounts devtmpfs there at boot.
     log "Creating $size sparse Btrfs filesystem (Zstd level 3)"
     truncate --size "$size" "$image"
-    mkfs.btrfs --force --label ubuntu-root \
+    mkfs.btrfs --force --label debian-root \
         --rootdir "$rootfs" --compress zstd:3 "$image"
 }
 
@@ -244,11 +251,11 @@ output=$2
 size=${3:-2G}
 pubkey=${4:-${HOME}/.ssh/id_ed25519.pub}
 user=${MICROVM_USER:-$(id -un)}
-hostname=${MICROVM_HOSTNAME:-ubuntu-microvm}
+hostname=${MICROVM_HOSTNAME:-debian-microvm}
 hooks=${MICROVM_PROVISION_DIR:-}
 read -r -a packages <<<"${MICROVM_PACKAGES:-}"
 
-[[ -r "$input" && -f "$input" ]] || die "cannot read Ubuntu Base archive: $input"
+[[ -r "$input" && -f "$input" ]] || die "cannot read Debian root filesystem archive: $input"
 [[ -r "$pubkey" && -s "$pubkey" ]] || die "missing SSH public key: $pubkey (pass a .pub file as the fourth argument)"
 [[ ! -e "$output" && ! -L "$output" ]] || die "output already exists: $output"
 [[ $size =~ ^[1-9][0-9]*[KMGTP]?$ ]] || die "invalid filesystem size: $size"
@@ -283,7 +290,7 @@ build_root=$(realpath -m -- "${MICROVM_BUILD_DIR:-build}")
 
 mkdir -p -- "$build_root"
 work=$(mktemp -d "$build_root/rootfs.XXXXXXXX")
-image=$(mktemp "$outdir/.ubuntu-image.XXXXXXXX")
+image=$(mktemp "$outdir/.debian-image.XXXXXXXX")
 
 cleanup() {
     local status=$?

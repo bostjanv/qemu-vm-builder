@@ -1,6 +1,6 @@
 # QEMU VM Builder
 
-Scripts for building small, fast-booting Ubuntu VMs for QEMU/KVM. The VM uses
+Scripts for building small, fast-booting Debian VMs for QEMU/KVM. The VM uses
 QEMU's `microvm` machine type, a custom kernel with everything built in, and a
 raw disk image with a Btrfs root filesystem. The image has no partitions,
 bootloader, or initramfs. QEMU boots the kernel directly.
@@ -41,14 +41,18 @@ networking, so the host system and network are not changed.
 ```bash
 cp vm.conf.example vm.conf   # optional: edit the settings
 ./build.sh
-./boot-ubuntu-microvm.sh build/bzImage build/image.raw
+./boot-debian-microvm.sh build/bzImage build/image.raw
 ssh -p 2222 127.0.0.1
 ```
 
-`build.sh` downloads Ubuntu Base and checks it against Ubuntu's published
-SHA256 checksum. Then it builds the kernel (`build/bzImage`) and the root
-filesystem image (`build/image.raw`). Steps whose output already exists are
-skipped, so delete an output to rebuild it.
+`build.sh` downloads the root filesystem of Debian's official Docker image
+(built by [debuerreotype](https://github.com/debuerreotype/debuerreotype)) and
+checks it against the SHA256 digest in the image's OCI manifest. Then it
+builds the kernel (`build/bzImage`) and the root filesystem image
+(`build/image.raw`). Steps whose output already exists are skipped, so delete
+an output to rebuild it. Debian rebuilds its Docker image regularly with the
+latest updates; delete `build/debian-RELEASE-amd64-rootfs.tar.gz` to download
+the current one.
 
 The image contains systemd, SSH, and DHCP networking, plus a guest user with
 the same name as your host user. That user logs in over SSH with your key and
@@ -75,13 +79,13 @@ and job settings. Run any script with `--help` for details.
 | `MICROVM_KERNEL` | `MICROVM_BUILD_DIR/bzImage` | Kernel output path |
 | `MICROVM_IMAGE` | `MICROVM_BUILD_DIR/image.raw` | Image output path |
 | `MICROVM_IMAGE_SIZE` | `8G` | Image size (the file is sparse) |
-| `MICROVM_UBUNTU_VERSION` | `26.04.1` | Ubuntu Base release |
-| `MICROVM_KERNEL_VERSION` | `6.18.59` | Linux 6.18.x release |
+| `MICROVM_DEBIAN_RELEASE` | `trixie` | Debian release (codename, such as `trixie`, `forky`, or `sid`) |
+| `MICROVM_KERNEL_VERSION` | `6.18.63` | Linux 6.18.x release |
 | `MICROVM_USER` | your user name | Guest user name |
-| `MICROVM_HOSTNAME` | `ubuntu-microvm` | Guest hostname |
+| `MICROVM_HOSTNAME` | `debian-microvm` | Guest hostname |
 | `MICROVM_SSH_KEY` | `~/.ssh/id_ed25519.pub` | Public key(s) allowed to log in |
 | `MICROVM_SSH_PORT` | `2222` | Host port forwarded to the guest's SSH server |
-| `MICROVM_PACKAGES` | none | Extra Ubuntu packages, separated by spaces |
+| `MICROVM_PACKAGES` | none | Extra Debian packages, separated by spaces |
 | `MICROVM_PROVISION_DIR` | none | Directory of provisioning scripts (see below) |
 | `MICROVM_BUILD_DIR` | `./build` | Outputs, downloads, kernel build cache, and temporary files |
 | `MICROVM_KERNEL_JOBS` | number of CPUs | Parallel kernel compile jobs |
@@ -94,7 +98,7 @@ The boot script uses these environment variables:
 | `MICROVM_CPUS` | `4` | Number of vCPUs |
 | `MICROVM_CONSOLE` | `virtio` | `virtio` or `serial` (shows early boot logs) |
 | `MICROVM_DAEMON` | `1` | Set to `0` to run in the foreground |
-| `MICROVM_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/ubuntu-microvm-PORT` | Console socket, PID file, and log |
+| `MICROVM_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/debian-microvm-PORT` | Console socket, PID file, and log |
 
 ### Provisioning scripts
 
@@ -107,7 +111,7 @@ create in the user's home directory should be owned by that user.
 [provision.d.example](provision.d.example) has two example scripts:
 
 - `10-dev-tools.sh` installs a few tools and sets up the user's shell.
-- `20-bees.sh` builds [bees](https://github.com/Zygo/bees) from source (Ubuntu
+- `20-bees.sh` builds [bees](https://github.com/Zygo/bees) from source (Debian
   has no package for it) and removes the compilers afterwards. On the first
   boot, it configures bees for the root filesystem, sizing the hash table to
   the filesystem, and enables `beesd@UUID.service` for background
@@ -127,7 +131,7 @@ echo 'MICROVM_PROVISION_DIR=provision.d' >>vm.conf
 `build.sh` runs these scripts, which can also be used on their own:
 
 ```bash
-./build-microvm-kernel.sh 6.18.59 build/bzImage
-./prepare-ubuntu-rootfs.sh build/ubuntu-base-26.04.1-base-amd64.tar.gz build/image.raw 8G ~/.ssh/id_ed25519.pub
-./boot-ubuntu-microvm.sh build/bzImage build/image.raw
+./build-microvm-kernel.sh 6.18.63 build/bzImage
+./prepare-debian-rootfs.sh build/debian-trixie-amd64-rootfs.tar.gz build/image.raw 8G ~/.ssh/id_ed25519.pub
+./boot-debian-microvm.sh build/bzImage build/image.raw
 ```

@@ -9,12 +9,12 @@
 #MICROVM_IMAGE_SIZE=8G
 
 # Sources
-#MICROVM_UBUNTU_VERSION=26.04.1
-#MICROVM_KERNEL_VERSION=6.18.59
+#MICROVM_DEBIAN_RELEASE=trixie          # Debian codename, such as trixie, forky or sid
+#MICROVM_KERNEL_VERSION=6.18.63
 
 # Guest
 #MICROVM_USER=alice                     # default: your host user name
-#MICROVM_HOSTNAME=ubuntu-microvm
+#MICROVM_HOSTNAME=debian-microvm
 #MICROVM_SSH_KEY=$HOME/.ssh/id_ed25519.pub
 #MICROVM_SSH_PORT=2222                  # host port forwarded to the guest SSH server
 #MICROVM_PACKAGES='git vim curl'

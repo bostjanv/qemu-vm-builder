@@ -1,21 +1,21 @@
 # AGENTS.md
 
-Bash scripts that build a fast-booting Ubuntu VM for QEMU's `microvm` machine:
+Bash scripts that build a fast-booting Debian VM for QEMU's `microvm` machine:
 a custom kernel (`bzImage`) plus a partitionless Btrfs raw image (`image.raw`).
 Read [README.md](README.md) for usage and every setting.
 
 ## Layout
 
 - `build.sh` reads `vm.conf` (env vars override it), downloads and checks
-  Ubuntu Base, then runs the two build scripts. Steps whose output exists are
-  skipped.
+  the root filesystem of Debian's official Docker image, then runs the two
+  build scripts. Steps whose output exists are skipped.
 - `build-microvm-kernel.sh` builds Linux 6.18.x from Firecracker's pinned guest
   config. `CONFIG_MODULES=n`, no initramfs: everything needed to boot is built
   in, and the script fails if `olddefconfig` drops a required option.
-- `prepare-ubuntu-rootfs.sh` provisions the rootfs in an unprivileged user
+- `prepare-debian-rootfs.sh` provisions the rootfs in an unprivileged user
   namespace and runs `mkfs.btrfs --rootdir`. Code inside the `GUEST` heredoc
   and `run_chroot` runs in the guest chroot; the rest runs on the host.
-- `boot-ubuntu-microvm.sh` boots the VM with user-mode networking (SSH on
+- `boot-debian-microvm.sh` boots the VM with user-mode networking (SSH on
   `127.0.0.1:MICROVM_SSH_PORT`).
 - `vm.conf.example` and `provision.d.example/` are templates that users copy
   to `vm.conf` and `provision.d/`.
@@ -57,7 +57,7 @@ There is no test suite or CI.
   Remove scratch files afterwards.
 - Booting needs `/dev/kvm`. If it is unavailable, say the VM was not booted
   instead of claiming the boot works; the user boots it himself.
-- Reuse `build/` (Ubuntu Base download, kernel cache) instead of rebuilding.
+- Reuse `build/` (Debian download, kernel cache) instead of rebuilding.
   Don't move `build/kernel-*/build`; it contains absolute paths.
 - `update-alternatives` warnings about missing man pages during the build are
   harmless.
