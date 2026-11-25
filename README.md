@@ -101,6 +101,7 @@ The boot script uses these environment variables:
 | `MICROVM_DAEMON` | `1` | Set to `0` to run in the foreground |
 | `MICROVM_RUNTIME_DIR` | `$XDG_RUNTIME_DIR/debian-microvm-PORT` | Console socket, PID file, and log |
 | `MICROVM_USB_DEVICES` | none | Host USB devices to pass through, as `VENDOR:PRODUCT` IDs separated by spaces |
+| `MICROVM_MONITOR_SOCKET` | none | Path of a QEMU human monitor (HMP) Unix socket; connect with `socat -,rawer,escape=0x1d UNIX-CONNECT:PATH` |
 
 ### Provisioning scripts
 

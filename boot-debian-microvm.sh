@@ -25,6 +25,10 @@ Optional environment variables:
                       Host USB devices to pass through, such as 0403:6001
                       (see lsusb). Needs a kernel built with MICROVM_KERNEL_USB=1
                       and read/write access to the device in /dev/bus/usb.
+  MICROVM_MONITOR_SOCKET=PATH
+                      Create a QEMU human monitor (HMP) Unix socket at PATH
+                      (default: no monitor). The socket is private to your
+                      user and gives full control of the VM.
 
 Requires a KVM-capable x86-64 host and a kernel with Btrfs, virtio-mmio,
 virtio-blk, and virtio-mmio command-line discovery built in. The serial
@@ -45,6 +49,22 @@ EOF
 
 die() { printf 'Error: %s\n' "$*" >&2; exit 1; }
 
+# QEMU leaves its server sockets behind when it exits. Remove a leftover
+# socket that nothing listens on; refuse anything else at the path.
+remove_stale_socket() {
+    local path=$1
+    [[ -e $path || -L $path ]] || return 0
+    [[ -S $path && ! -L $path && -O $path ]] || \
+        die "path already exists and is not your socket: $path"
+    command -v socat >/dev/null 2>&1 || \
+        die "path already exists: $path (is a VM already running? Install socat to remove leftover sockets automatically)"
+    if socat -u OPEN:/dev/null "UNIX-CONNECT:$path" 2>/dev/null; then
+        die "a VM is already running: something listens on $path"
+    fi
+    rm -f -- "$path" || die "cannot remove leftover socket: $path"
+    printf 'Removed leftover socket: %s\n' "$path" >&2
+}
+
 if [[ ${1:-} == -h || ${1:-} == --help ]]; then
     usage
     exit 0
@@ -63,6 +83,7 @@ console=${MICROVM_CONSOLE:-virtio}
 daemon=${MICROVM_DAEMON:-1}
 guest_user=${MICROVM_USER:-$(id -un)}
 read -r -a usb_devices <<<"${MICROVM_USB_DEVICES:-}"
+monitor_socket=${MICROVM_MONITOR_SOCKET:-}
 
 [[ -r $kernel && -f $kernel ]] || die "cannot read kernel: $kernel"
 [[ -r $disk && -f $disk ]] || die "cannot read raw Btrfs image: $disk"
@@ -75,6 +96,24 @@ for device in "${usb_devices[@]}"; do
     [[ $device =~ ^[0-9a-fA-F]{4}:[0-9a-fA-F]{4}$ ]] || \
         die "invalid USB device in MICROVM_USB_DEVICES: $device (expected VENDOR:PRODUCT, such as 0403:6001)"
 done
+
+# The monitor socket. QEMU's -daemonize changes to /, so use an absolute path.
+monitor_args=()
+if [[ -n $monitor_socket ]]; then
+    [[ $monitor_socket == /* ]] || monitor_socket=$PWD/$monitor_socket
+    [[ $monitor_socket != *,* ]] || die 'MICROVM_MONITOR_SOCKET must not contain commas (QEMU option separator)'
+    [[ $monitor_socket != */ ]] || die "MICROVM_MONITOR_SOCKET must be a file path: $monitor_socket"
+    (( $(printf %s "$monitor_socket" | wc -c) < 108 )) || \
+        die "monitor socket path must be shorter than 108 bytes: $monitor_socket"
+    [[ -d ${monitor_socket%/*}/ ]] || die "monitor socket directory does not exist: ${monitor_socket%/*}/"
+    remove_stale_socket "$monitor_socket"
+    # Commas separate QEMU suboptions, not array elements.
+    # shellcheck disable=SC2054
+    monitor_args=(
+        -chardev "socket,id=monitor0,path=$monitor_socket,server=on,wait=off"
+        -mon chardev=monitor0,mode=readline
+    )
+fi
 
 case $console in
     serial)
@@ -131,9 +170,8 @@ if [[ $daemon == 1 ]]; then
     pidfile=$runtime_dir/qemu.pid
     console_socket=$runtime_dir/console.sock
     console_log=$runtime_dir/console.log
-    for path in "$pidfile" "$console_socket"; do
-        [[ ! -e $path && ! -L $path ]] || die "path already exists: $path (is a VM already running?)"
-    done
+    [[ ! -e $pidfile && ! -L $pidfile ]] || die "path already exists: $pidfile (is a VM already running?)"
+    remove_stale_socket "$console_socket"
     [[ ! -L $console_log && ( ! -e $console_log || -f $console_log ) ]] || \
         die "invalid or symlinked console log: $console_log"
 
@@ -166,6 +204,8 @@ esac
 printf 'Starting Debian microVM: %s\n' "$disk"
 printf 'SSH after boot: ssh -p %s %s@127.0.0.1\n' "$ssh_port" "$guest_user"
 printf 'Console: %s\n' "$console"
+[[ -z $monitor_socket ]] || \
+    printf 'Monitor: socat -,rawer,escape=0x1d UNIX-CONNECT:%q\n' "$monitor_socket"
 if [[ $daemon == 1 ]]; then
     printf 'Mode: daemon (background)\n'
     printf 'PID file: %s\n' "$pidfile"
@@ -179,6 +219,8 @@ else
     printf '\n'
 fi
 
+# The monitor socket is created with QEMU's umask; keep it private.
+umask 077
 exec qemu-system-x86_64 \
     -M "$machine" \
     -enable-kvm -cpu host -m "$memory" -smp "$cpus" \
@@ -187,6 +229,7 @@ exec qemu-system-x86_64 \
     -nodefaults -no-user-config "${qemu_display[@]}" -no-reboot \
     "${console_args[@]}" \
     "${usb_args[@]}" \
+    "${monitor_args[@]}" \
     -drive "id=rootdisk,file=$disk,format=raw,if=none,discard=unmap,detect-zeroes=unmap" \
     -device virtio-blk-device,drive=rootdisk \
     -netdev "user,id=net0,hostfwd=tcp:127.0.0.1:${ssh_port}-:22" \
