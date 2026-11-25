@@ -107,12 +107,9 @@ if [[ -n $monitor_socket ]]; then
         die "monitor socket path must be shorter than 108 bytes: $monitor_socket"
     [[ -d ${monitor_socket%/*}/ ]] || die "monitor socket directory does not exist: ${monitor_socket%/*}/"
     remove_stale_socket "$monitor_socket"
-    # Commas separate QEMU suboptions, not array elements.
-    # shellcheck disable=SC2054
-    monitor_args=(
-        -chardev "socket,id=monitor0,path=$monitor_socket,server=on,wait=off"
-        -mon chardev=monitor0,mode=readline
-    )
+    # -monitor is not deprecated, unlike -mon (QEMU 11.1), and unlike
+    # -object monitor-hmp it also works with older QEMU.
+    monitor_args=(-monitor "unix:$monitor_socket,server=on,wait=off")
 fi
 
 case $console in
